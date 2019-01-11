@@ -1,94 +1,79 @@
 package data;
 
 import javax.imageio.ImageIO;
+import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferByte;
+import java.awt.image.WritableRaster;
 import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
 
-import lombok.SneakyThrows;
+public class MyImage {
+    public String path;
 
-
-    public class Steganograph {
-
-        @SneakyThrows
-        public void encode(String messageToHide, String imagePath) {
-            BufferedImage bufferedImage = ImageIO.read(new File(imagePath));
-            hideMessage(messageToHide, bufferedImage);
-            save(bufferedImage);
-        }
-
-        @SneakyThrows
-        private void save(BufferedImage bufferedImage) {
-            ImageIO.write(bufferedImage, "bmp", new File("hidden.bmp"));
-        }
-
-        @SneakyThrows
-        private void hideMessage(String messageStr, BufferedImage bufImage) {
-            byte[] message = messageStr.getBytes();
-            int messageLength = message.length;
-            int width = bufImage.getWidth();
-            int height = bufImage.getHeight();
-            int rgb = bufImage.getRGB(0, 0);
-            rgb = rgb & 0xff00ffff;
-            rgb = rgb | messageLength << 16;
-            bufImage.setRGB(0, 0, rgb);
-            int currentChar = 0;
-            for (int i = 0; i < width; i++) {
-                if (currentChar == messageLength) break;
-                for (int j = 0; j < height; j++) {
-                    if (i == 0 && j == 0) continue;
-                    if (currentChar == messageLength) break;
-                    rgb = bufImage.getRGB(i, j);
-                    int a = (rgb >> 24) & 0xff;
-                    int r = (rgb >> 16) & 0xff;
-                    int g = (rgb >> 8) & 0xff;
-                    int b = rgb & 0xff;
-                    r = ((r >> 3 & 0xff) << 3 & 0xff) | ((message[currentChar] >> 5) & 0xff);
-                    g = ((g >> 3 & 0xff) << 3 & 0xff) | ((message[currentChar] >> 2) & 0xff);
-                    b = ((b >> 2 & 0xff) << 2 & 0xff) | (message[currentChar]);
-                    rgb = (a << 24) | (r << 16) | (g << 8) | b;
-                    bufImage.setRGB(i, j, rgb);
-                    currentChar++;
-                }
-            }
-        }
-
-        @SneakyThrows
-        public String decode(String imagePath) {
-            BufferedImage bufImage = ImageIO.read(new File(imagePath));
-            char[] message = showMessage(bufImage);
-            StringBuilder strBuild = new StringBuilder();
-            for (char aMessage : message) {
-                strBuild.append(aMessage);
-            }
-            return strBuild.toString();
-        }
-
-        private char[] showMessage(BufferedImage bufImage) {
-            int width = bufImage.getWidth();
-            int height = bufImage.getHeight();
-            int rgb = bufImage.getRGB(0, 0);
-            int messageSize = (rgb & 0x00ff0000) >>> 16;
-            char[] message = new char[messageSize];
-            int countChar = 0;
-            for (int i = 0; i < width; i++) {
-                if (countChar == messageSize) break;
-                for (int j = 0; j < height; j++) {
-                    if (i == 0 && j == 0) continue;
-                    if (countChar == messageSize) break;
-                    rgb = bufImage.getRGB(i, j);
-                    int r = (rgb >> 16) & 0xff;
-                    int g = (rgb >> 8) & 0xff;
-                    int b = rgb & 0xff;
-                    r = (r << 5) & 0xE0;
-                    g = (g << 2) & 0x1C;
-                    b &= 3;
-                    int currentChar = r | g | b;
-                    message[countChar] = (char) currentChar;
-                    countChar++;
-                }
-            }
-            return message;
-        }
-
+    public MyImage(String path) throws IOException {
+        this.path = path;
     }
 
+    public BufferedImage getImage(String path) throws IOException {
+        File file = new File(path);
+        BufferedImage image = ImageIO.read(file);
+        BufferedImage picture = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
+        Graphics2D graphics = picture.createGraphics();
+        graphics.drawRenderedImage(image, null);
+        graphics.dispose();
+        return picture;
+    }
+
+    public byte[] get_byte_data(BufferedImage image) {
+        WritableRaster raster = image.getRaster();
+        DataBufferByte buffer = (DataBufferByte) raster.getDataBuffer();
+        return buffer.getData();
+    }
+
+
+    public  byte[] convert_to_byte(int i) {
+        byte byte3 = (byte) ((i & 0xFF000000) >>> 24);
+        byte byte2 = (byte) ((i & 0x00FF0000) >>> 16);
+        byte byte1 = (byte) ((i & 0x0000FF00) >>> 8);
+        byte byte0 = (byte) ((i & 0x000000FF));
+        return (new byte[]{byte3, byte2, byte1, byte0});
+    }
+
+
+    public byte[] coding(byte[] image, byte[] addition, int bias) {
+        for (int i = 0; i < addition.length; i++) {
+            int add = addition[i];
+            for (int bit = 7; bit >= 0; bit--, bias++) {
+                int b = (add >>> bit) & 1;
+                image[bias] = (byte) ((image[bias] & 0xFE) | b);
+            }
+        }
+        return image;
+    }
+
+    public void setImage(BufferedImage image, File save) throws IOException {
+        save.delete();
+        ImageIO.write(image, "png", save);
+    }
+
+    public String decoding(String path2) throws IOException {
+        BufferedImage image = getImage(path2);
+        byte[] byte_img = get_byte_data(image);
+        int length = 0;
+        int bias = 32;
+        for (int i = 0; i < 32; i++) {
+            length = (length << 1) | (byte_img[i] & 1);
+        }
+
+        byte[] text = new byte[length];
+        for (int b = 0; b < text.length; b++) {
+            for (int i = 0; i < 8; i++, bias++) {
+                text[b] = (byte) ((text[b] << 1) | (byte_img[bias] & 1));
+            }
+        }
+        return (new String(text));
+    }
+
+}
